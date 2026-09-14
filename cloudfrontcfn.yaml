@@ -1,17 +1,112 @@
 AWSTemplateFormatVersion: 2010-09-09
+
 Description: |
   This cfn file is used for creating a template which runs S3 static 
   web-hosting using cloudfront distribution.
+
 Parameters:
+  myHostedzoneId:
+    Description: Select your Hostedzone Id
+    Type: AWS::Route53::HostedZone::Id
+    Default: Z05050723IJIXUIR92YPM
+  
+  myDomainName:
+    Description: Type your subdomain name for example "kittens.halitcloud.com"
+    Type: String
+    AllowedPattern: (?!-)[a-z0-9-.]{3,63}(?<!-)
 
 Resources:
-  
+  myS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref myDomainName # kittens.halitcloud.com
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
 
+
+  myBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref myS3Bucket
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Action:
+                - 's3:GetObject'
+              Effect: Allow
+              Resource: !Join
+                - ''
+                - - !GetAtt myS3Bucket.Arn
+                  - /*
+              Principal: '*'  
+  
+  myCloudFrontDist:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - !Ref myDomainName
+        Comment: CloudFront for S3 Bucket
+        ConnectionMode: direct
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          Compress: true
+          TargetOriginId: halit-origin-id
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        Enabled: true
+        HttpVersion: http2
+        Origins:
+          - CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+            DomainName: !Select [ 1 , !Split [ '//'  ,!GetAtt myS3Bucket.WebsiteURL]] 
+            Id: halit-origin-id
+        PriceClass: PriceClass_All
+        ViewerCertificate:
+          AcmCertificateArn: arn:aws:acm:us-east-1:465861110941:certificate/841e28bb-eecf-411d-9d09-b6ac7a164882
+          MinimumProtocolVersion: TLSv1.2_2021
+          SslSupportMethod: sni-only
+  
+  myRoute53:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneId: !Ref myHostedzoneId
+      RecordSets: 
+        - AliasTarget:
+            DNSName: !GetAtt myCloudFrontDist.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+          Name: !Ref myDomainName
+          Type: A
+        
 Outputs:
 
-  BucketName: 
+  BucketName:
+    Description: Bucket web URL name from S3 Bucket web hosting
+    Value: !GetAtt myS3Bucket.WebsiteURL
     
   CloudfrontEndpoint:
-    
+    Description: CloudFront URL 
+    Value: !Join
+      - ''
+      - - http://
+        - !GetAtt myCloudFrontDist.DomainName
+
   FullDomainName:
-    
+    Description: My general Website URL associated with Route53  
+    Value: !Ref myDomainName
+
+      
